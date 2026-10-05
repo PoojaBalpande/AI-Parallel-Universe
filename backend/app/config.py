@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     APP_VERSION: str = "0.1.0"
     
     OPENAI_API_KEY: Optional[str] = None
+    LLM_API_KEY: Optional[str] = None
+    LLM_MODEL: str = "gpt-4o-mini"
+    LLM_BASE_URL: Optional[str] = None
+    LLM_MOCK_MODE: bool = False
     DATABASE_URL: Optional[str] = None
     
     CORS_ORIGINS: List[str] = ["http://localhost:3000"]
@@ -21,3 +25,4 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
