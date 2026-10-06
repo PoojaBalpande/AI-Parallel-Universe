@@ -1,8 +1,9 @@
 import logging
 from app.schemas.scenario import Scenario, Synthesis, ParallelUniverses, UniverseOutcome
-from app.services.llm_service import llm_service
+from app.services.llm_service import llm_service, LLMServiceError
 
 logger = logging.getLogger("ai_parallel_universe.universe_generator")
+
 
 SYSTEM_PROMPT = """
 You are the Parallel Universe Generation Engine.
@@ -44,6 +45,9 @@ async def generate_parallel_universes(scenario: Scenario, synthesis: Synthesis) 
     """
     Generates Optimistic, Baseline, and Adverse parallel universe outcomes based on synthesized evidence.
     """
+    if llm_service.is_mock_mode:
+        return _generate_universes_mock(scenario, synthesis)
+
     user_prompt = f"""Scenario: {scenario.original_text}
 Subject: {scenario.subject}
 Action: {scenario.action}
@@ -57,18 +61,16 @@ Generate the three parallel universe outcomes."""
 
     llm_result = await llm_service.generate_json(SYSTEM_PROMPT, user_prompt)
 
-    if llm_result:
-        try:
-            return ParallelUniverses(
-                optimistic=UniverseOutcome(**llm_result["optimistic"]),
-                baseline=UniverseOutcome(**llm_result["baseline"]),
-                adverse=UniverseOutcome(**llm_result["adverse"]),
-            )
-        except Exception as e:
-            logger.warning(f"Error parsing LLM parallel universe response: {e}")
+    try:
+        return ParallelUniverses(
+            optimistic=UniverseOutcome(**llm_result["optimistic"]),
+            baseline=UniverseOutcome(**llm_result["baseline"]),
+            adverse=UniverseOutcome(**llm_result["adverse"]),
+        )
+    except Exception as e:
+        logger.error(f"Error parsing LLM parallel universe response: {e}")
+        raise LLMServiceError(f"Failed to parse LLM parallel universe response: {e}") from e
 
-    # Fallback / Mock Universe Generator
-    return _generate_universes_mock(scenario, synthesis)
 
 
 def _generate_universes_mock(scenario: Scenario, synthesis: Synthesis) -> ParallelUniverses:

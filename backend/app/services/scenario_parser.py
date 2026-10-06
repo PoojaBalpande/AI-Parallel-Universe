@@ -2,9 +2,10 @@ import re
 import logging
 from typing import Optional, List, Dict, Any
 from app.schemas.scenario import Scenario, LocationInfo, TimeInfo
-from app.services.llm_service import llm_service
+from app.services.llm_service import llm_service, LLMServiceError
 
 logger = logging.getLogger("ai_parallel_universe.parser")
+
 
 SYSTEM_PROMPT = """
 You are a Scenario Parsing System for a decision intelligence engine.
@@ -36,19 +37,19 @@ async def parse_scenario(scenario_text: str) -> Scenario:
     """
     scenario_text_clean = scenario_text.strip()
 
-    user_prompt = f"Decompose the following scenario:\n\"{scenario_text_clean}\""
+    if llm_service.is_mock_mode:
+        return _parse_scenario_mock(scenario_text_clean)
 
+    user_prompt = f"Decompose the following scenario:\n\"{scenario_text_clean}\""
     llm_result = await llm_service.generate_json(SYSTEM_PROMPT, user_prompt)
 
-    if llm_result:
-        try:
-            llm_result["original_text"] = scenario_text_clean
-            return Scenario(**llm_result)
-        except Exception as e:
-            logger.warning(f"Failed to validate LLM response into Scenario schema: {e}")
+    try:
+        llm_result["original_text"] = scenario_text_clean
+        return Scenario(**llm_result)
+    except Exception as e:
+        logger.error(f"Failed to validate LLM response into Scenario schema: {e}")
+        raise LLMServiceError(f"Failed to validate LLM response into Scenario schema: {e}") from e
 
-    # Dynamic fallback / mock parser
-    return _parse_scenario_mock(scenario_text_clean)
 
 
 def _parse_scenario_mock(text: str) -> Scenario:

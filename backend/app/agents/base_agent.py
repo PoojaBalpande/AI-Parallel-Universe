@@ -1,7 +1,7 @@
 import logging
 from typing import List, Dict, Any, Optional
 from app.schemas.scenario import Scenario, ExpertAnalysis
-from app.services.llm_service import llm_service
+from app.services.llm_service import llm_service, LLMServiceError
 
 logger = logging.getLogger("ai_parallel_universe.agents")
 
@@ -21,6 +21,9 @@ class BaseAgent:
         """
         Executes independent expert domain analysis for the given scenario.
         """
+        if llm_service.is_mock_mode:
+            return self._analyze_mock(scenario)
+
         system_prompt = f"""
 You are the {self.name} ({self.role}).
 {self.system_instructions}
@@ -57,16 +60,14 @@ Provide your independent domain analysis."""
 
         llm_result = await llm_service.generate_json(system_prompt, user_prompt)
 
-        if llm_result:
-            try:
-                llm_result["expert"] = self.name
-                llm_result["domain"] = self.domain
-                return ExpertAnalysis(**llm_result)
-            except Exception as e:
-                logger.warning(f"Error parsing LLM response for expert {self.name}: {e}")
+        try:
+            llm_result["expert"] = self.name
+            llm_result["domain"] = self.domain
+            return ExpertAnalysis(**llm_result)
+        except Exception as e:
+            logger.error(f"Error parsing LLM response for expert {self.name}: {e}")
+            raise LLMServiceError(f"Failed to parse LLM analysis for expert {self.name}: {e}") from e
 
-        # Fallback to dynamic mock response generator specific to subclass domain
-        return self._analyze_mock(scenario)
 
     def _analyze_mock(self, scenario: Scenario) -> ExpertAnalysis:
         """

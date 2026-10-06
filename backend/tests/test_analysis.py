@@ -1,8 +1,19 @@
 import pytest
+from unittest.mock import AsyncMock, patch
+import httpx
 from fastapi.testclient import TestClient
 from app.main import app
+from app.config import settings
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def set_mock_mode_for_tests(monkeypatch):
+    """
+    Ensure standard tests default to LLM_MOCK_MODE=True so tests run deterministically without external API calls.
+    """
+    monkeypatch.setattr(settings, "LLM_MOCK_MODE", True)
 
 
 def test_valid_scenario_analysis():
@@ -124,3 +135,40 @@ def test_ambiguous_input():
     assert scenario["location"]["country"] is None
     assert scenario["time"]["start_year"] is None
     assert len(scenario["uncertainties"]) > 0
+
+
+def test_llm_failure_in_live_mode_returns_error_response(monkeypatch):
+    """
+    Test failure handling: When LLM_MOCK_MODE=false and live LLM call fails,
+    an explicit HTTP 502 error is returned and NO mock analysis is generated.
+    """
+    monkeypatch.setattr(settings, "LLM_MOCK_MODE", False)
+    monkeypatch.setattr(settings, "LLM_API_KEY", "test-key-123")
+
+    with patch("httpx.AsyncClient.post", side_effect=httpx.HTTPError("Simulated LLM network timeout")):
+        payload = {"scenario": "India bans the sale of new petrol and diesel cars from 2035."}
+        response = client.post("/api/analyze", json=payload)
+
+        # Must return 502 Bad Gateway error instead of 200 OK mock analysis
+        assert response.status_code == 502
+        data = response.json()
+        assert "LLM service failed" in data["detail"]
+        assert "parallel_universes" not in data
+        assert "analyses" not in data
+
+
+def test_mock_mode_works_normally(monkeypatch):
+    """
+    Test mock mode: When LLM_MOCK_MODE=true, mock implementations generate complete analysis normally.
+    """
+    monkeypatch.setattr(settings, "LLM_MOCK_MODE", True)
+
+    payload = {"scenario": "India bans the sale of new petrol and diesel cars from 2035."}
+    response = client.post("/api/analyze", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "scenario" in data
+    assert "parallel_universes" in data
+    assert "optimistic" in data["parallel_universes"]
+

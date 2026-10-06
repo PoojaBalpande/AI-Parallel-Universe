@@ -1,9 +1,10 @@
 import logging
 from typing import List
 from app.schemas.scenario import Scenario, DetectedDomain, ExpertAnalysis, Synthesis
-from app.services.llm_service import llm_service
+from app.services.llm_service import llm_service, LLMServiceError
 
 logger = logging.getLogger("ai_parallel_universe.synthesizer")
+
 
 SYSTEM_PROMPT = """
 You are the Executive Synthesizer for an AI Parallel Universe Decision Engine.
@@ -31,6 +32,9 @@ async def synthesize_analyses(
     """
     Synthesizes independent expert domain analyses into an overarching synthesis report.
     """
+    if llm_service.is_mock_mode:
+        return _synthesize_mock(scenario, domains, analyses)
+
     analyses_summary = ""
     for a in analyses:
         analyses_summary += f"\n--- EXPERT: {a.expert} (Domain: {a.domain}, Impact: {a.impact_level}) ---\n"
@@ -50,14 +54,12 @@ Synthesize these independent findings into a multi-domain synthesis report."""
 
     llm_result = await llm_service.generate_json(SYSTEM_PROMPT, user_prompt)
 
-    if llm_result:
-        try:
-            return Synthesis(**llm_result)
-        except Exception as e:
-            logger.warning(f"Error parsing LLM response for Synthesis: {e}")
+    try:
+        return Synthesis(**llm_result)
+    except Exception as e:
+        logger.error(f"Error parsing LLM response for Synthesis: {e}")
+        raise LLMServiceError(f"Failed to parse LLM synthesis response: {e}") from e
 
-    # Fallback / Mock synthesis logic
-    return _synthesize_mock(scenario, domains, analyses)
 
 
 def _synthesize_mock(scenario: Scenario, domains: List[DetectedDomain], analyses: List[ExpertAnalysis]) -> Synthesis:

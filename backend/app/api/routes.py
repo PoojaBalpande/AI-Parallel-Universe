@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, status
 from app.config import settings
 from app.schemas.health import HealthResponse
 from app.schemas.scenario import ScenarioRequest, AnalysisResponse
+from app.services.llm_service import LLMServiceError
 from app.services.scenario_parser import parse_scenario
 from app.services.domain_detector import detect_domains
 from app.services.expert_selector import select_experts
@@ -68,7 +69,13 @@ async def analyze_scenario(payload: ScenarioRequest) -> AnalysisResponse:
     except ValueError as ve:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(ve)
+            detail=f"Invalid user scenario: {str(ve)}"
+        )
+    except LLMServiceError as le:
+        logger.error(f"LLM service failure during scenario analysis: {le}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="LLM service failed. Unable to complete scenario analysis."
         )
     except Exception as exc:
         logger.error(f"Error processing scenario analysis: {exc}", exc_info=True)
